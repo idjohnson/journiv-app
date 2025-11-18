@@ -1,0 +1,156 @@
+name: E2E Smoke Test
+
+# Run on every push to main and on all pull requests
+# Skip when only documentation or frontend files change
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - "docs/**"
+      - "*.md"
+      - "content/**"
+      - "web/**"
+      - "LICENSE*"
+      - "CONTRIBUTING.md"
+      - "FUNDING.yml"
+  pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "*.md"
+      - "content/**"
+      - "web/**"
+      - "LICENSE*"
+      - "CONTRIBUTING.md"
+      - "FUNDING.yml"
+  workflow_dispatch: # allow manual runs
+
+# Ensure only one workflow runs at a time for each PR/branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke-test:
+    name: Docker Compose Health Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build Journiv Docker image
+        run: |
+          echo "🔨 Building Journiv Docker image..."
+          docker build -t swalabtech/journiv-app:latest .
+
+      - name: Create test environment file
+        run: |
+          echo "📝 Creating test environment configuration..."
+          cat > .env.test <<EOF
+          # Test configuration for CI
+          SECRET_KEY=test-secret-key-for-ci-only-not-for-production
+          DATABASE_URL=sqlite:////data/journiv.db
+          DOMAIN_NAME=localhost
+          DOMAIN_SCHEME=http
+          APP_PORT=8000
+          ENVIRONMENT=production
+          DEBUG=false
+          ENABLE_CORS=false
+          DISABLE_SIGNUP=false
+          EOF
+
+          echo "✅ Environment file created"
+
+      - name: Cleanup previous docker leftovers
+        run: |
+          echo "🧹 Cleaning up any previous Docker containers and volumes..."
+          APP_VERSION=latest docker compose -f docker-compose.prod.sqlite.yml down -v 2>/dev/null || true
+          docker volume prune -f || true
+          echo "✅ Cleanup complete"
+
+      - name: Start Journiv with Docker Compose
+        run: |
+          echo "🚀 Starting Journiv services with APP_VERSION=latest..."
+          APP_VERSION=latest docker compose -f docker-compose.prod.sqlite.yml --env-file .env.test up -d
+
+          echo "📋 Checking running containers..."
+          APP_VERSION=latest docker compose -f docker-compose.prod.sqlite.yml ps
+
+      - name: Wait for Journiv to be healthy
+        run: |
+          echo "⏳ Waiting for Journiv backend to become healthy..."
+
+          MAX_ATTEMPTS=30
+          ATTEMPT=0
+          SLEEP_TIME=2
+
+          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+            ATTEMPT=$((ATTEMPT + 1))
+            echo "  Attempt $ATTEMPT/$MAX_ATTEMPTS..."
+
+            # Check if the health endpoint responds with 200
+            if curl -f -s http://localhost:8000/api/v1/health > /dev/null 2>&1; then
+              echo "✅ Journiv is healthy!"
+              exit 0
+            fi
+
+            # Show container status for debugging
+            if [ $((ATTEMPT % 5)) -eq 0 ]; then
+              echo "  📊 Container status:"
+              APP_VERSION=latest docker compose -f docker-compose.prod.sqlite.yml ps
+            fi
+
+            sleep $SLEEP_TIME
+          done
+
+          echo "❌ Journiv failed to become healthy after $MAX_ATTEMPTS attempts"
+          echo "📋 Final container status:"
+          APP_VERSION=latest docker compose -f docker-compose.prod.sqlite.yml ps
+          echo "📋 Application logs:"
+          APP_VERSION=latest docker compose -f docker-compose.prod.sqlite.yml logs app
+          exit 1
+
+      - name: Test health endpoint
+        run: |
+          echo "🔍 Testing /api/v1/health endpoint..."
+
+          RESPONSE=$(curl -s -w "\n%{http_code}" http://localhost:8000/api/v1/health)
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | head -n-1)
+
+          echo "  HTTP Status: $HTTP_CODE"
+          echo "  Response Body: $BODY"
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "❌ Health check failed with HTTP $HTTP_CODE"
+            exit 1
+          fi
+
+          echo "✅ Health check passed!"
+
+      - name: Show application logs (on success)
+        if: success()
+        run: |
+          echo "📋 Application logs (last 50 lines):"
+          APP_VERSION=latest docker compose -f docker-compose.prod.sqlite.yml logs --tail=50 app
+
+      - name: Show application logs (on failure)
+        if: failure()
+        run: |
+          echo "📋 Full application logs:"
+          APP_VERSION=latest docker compose -f docker-compose.prod.sqlite.yml logs app
+          echo ""
+          echo "📋 Redis logs:"
+          APP_VERSION=latest docker compose -f docker-compose.prod.sqlite.yml logs redis
+          echo ""
+          echo "📋 Celery worker logs:"
+          APP_VERSION=latest docker compose -f docker-compose.prod.sqlite.yml logs celery-worker
+
+      - name: Cleanup
+        if: always()
+        run: |
+          echo "🧹 Cleaning up..."
+          APP_VERSION=latest docker compose -f docker-compose.prod.sqlite.yml down -v || true
+          docker volume prune -f || true
+          echo "✅ Cleanup complete"
