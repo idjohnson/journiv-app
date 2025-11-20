@@ -20,14 +20,12 @@ def upgrade() -> None:
     connection = op.get_bind()
     is_sqlite = connection.dialect.name == "sqlite"
 
-    op.execute(
-        sa.text("UPDATE user SET name = 'No Name' WHERE name IS NULL OR name = ''")
-    )
+    if is_sqlite:
+        op.execute(sa.text("UPDATE user SET name = 'No Name' WHERE name IS NULL OR name = ''"))
+    else:
+        op.execute(sa.text('UPDATE "user" SET name = \'No Name\' WHERE name IS NULL OR name = \'\''))
 
     if is_sqlite:
-        inspector = sa.inspect(connection)
-        columns = {col['name']: col for col in inspector.get_columns('user')}
-
         op.execute('''
             CREATE TABLE user_new (
                 id TEXT NOT NULL,
