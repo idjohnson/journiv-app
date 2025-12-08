@@ -203,12 +203,14 @@ class EntryService:
         self,
         user_id: uuid.UUID,
         limit: int = DEFAULT_ENTRY_PAGE_LIMIT,
-        offset: int = 0
+        offset: int = 0,
     ) -> List[Entry]:
-        """Get all entries for a user across all journals."""
+        """Get all entries for a user across all journals, sorted by entry_datetime_utc descending."""
         statement = select(Entry).where(
             Entry.user_id == user_id,
-        ).order_by(Entry.entry_datetime_utc.desc()).offset(offset).limit(limit)
+        ).order_by(Entry.entry_datetime_utc.desc())
+
+        statement = statement.offset(offset).limit(limit)
 
         return list(self.session.exec(statement))
 

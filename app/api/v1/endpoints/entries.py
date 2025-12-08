@@ -73,10 +73,17 @@ async def get_user_entries(
     Get all entries for the current user.
 
     Supports pagination via limit and offset parameters.
+    Entries are sorted by entry_datetime_utc in descending order (newest first).
+    For search functionality, use the /search endpoint.
+    For date range filtering, use the /date-range endpoint.
     """
     try:
         entry_service = EntryService(session)
-        entries = entry_service.get_user_entries(current_user.id, limit, offset)
+        entries = entry_service.get_user_entries(
+            user_id=current_user.id,
+            limit=limit,
+            offset=offset,
+        )
         return entries
     except Exception as e:
         logger.error(
@@ -177,7 +184,7 @@ async def get_entries_by_date_range(
     session: Annotated[Session, Depends(get_session)],
     start_date: date = Query(...),
     end_date: date = Query(...),
-    journal_id: Optional[uuid.UUID] = Query(None),
+    journal_id: Optional[str] = Query(None),
 ):
     """
     Get entries within a date range.
@@ -186,8 +193,19 @@ async def get_entries_by_date_range(
     """
     try:
         entry_service = EntryService(session)
+        journal_uuid = None
+
+        if journal_id:
+            try:
+                journal_uuid = uuid.UUID(journal_id)
+            except ValueError:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Invalid journal_id format. Must be a valid UUID."
+                )
+
         entries = entry_service.get_entries_by_date_range(
-            current_user.id, start_date, end_date, journal_id
+            current_user.id, start_date, end_date, journal_uuid
         )
         return entries
     except Exception as e:
