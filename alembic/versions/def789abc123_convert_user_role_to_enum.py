@@ -37,15 +37,35 @@ def upgrade() -> None:
     if not is_sqlite:
         # PostgreSQL: Create enum type and convert column
 
+        # Check if the enum type already exists
+        result = connection.execute(sa.text("""
+            SELECT EXISTS (
+                SELECT 1 FROM pg_type WHERE typname = 'user_role_enum'
+            )
+        """))
+        enum_exists = result.scalar()
+
         # Create the enum type if it doesn't exist
         # Using native PostgreSQL ENUM for better type safety
-        op.execute("CREATE TYPE user_role_enum AS ENUM ('admin', 'user')")
+        if not enum_exists:
+            op.execute("CREATE TYPE user_role_enum AS ENUM ('admin', 'user')")
 
         # Drop the server default temporarily (it's a string, incompatible with enum)
         op.execute('ALTER TABLE "user" ALTER COLUMN role DROP DEFAULT')
 
+        # Validate that all role values are valid before conversion
+        result = connection.execute(sa.text("""
+            SELECT COUNT(*) FROM "user"
+            WHERE role NOT IN ('admin', 'user')
+        """))
+        invalid_count = result.scalar()
+        if invalid_count > 0:
+            raise ValueError(
+                f"Found {invalid_count} users with invalid role values. "
+                "Please fix the data before running this migration."
+            )
+
         # Convert the column type using USING clause to cast existing values
-        # This is safe because all existing values are already 'admin' or 'user'
         op.execute("""
             ALTER TABLE "user"
             ALTER COLUMN role TYPE user_role_enum

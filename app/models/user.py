@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import List, Optional, TYPE_CHECKING, Union
 
 from pydantic import field_validator, EmailStr, HttpUrl
-from sqlalchemy import Column, ForeignKey, Enum as SQLAlchemyEnum
+from sqlalchemy import Column, ForeignKey, Enum as SQLAlchemyEnum, text
 from sqlmodel import Field, Relationship, Index, CheckConstraint, String
 
 from .base import BaseModel, TimestampMixin
@@ -39,11 +39,11 @@ class User(BaseModel, table=True):
             SQLAlchemyEnum(
                 UserRole,
                 name="user_role_enum",
-                native_enum=False,
+                native_enum=True,
                 values_callable=lambda x: [e.value for e in x]
             ),
             nullable=False,
-            server_default="user"
+            server_default=text("'user'")
         )
     )
     is_active: bool = Field(default=True)
@@ -109,8 +109,10 @@ class User(BaseModel, table=True):
         if isinstance(v, str):
             try:
                 return UserRole(v)
-            except ValueError:
-                raise ValueError(f"Invalid role: {v}. Must be one of: {[r.value for r in UserRole]}")
+            except ValueError as exc:
+                raise ValueError(
+                    f"Invalid role: {v}. Must be one of: {[r.value for r in UserRole]}"
+                ) from exc
         raise ValueError(f"Role must be a string or UserRole enum, got {type(v)}")
 
     @field_validator('email')
