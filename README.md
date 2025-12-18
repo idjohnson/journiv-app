@@ -47,9 +47,12 @@ Journiv is a self-hosted private journal. It features comprehensive journaling c
     preload="metadata">
   </video>
 </div> -->
+
+
 <div align="center">
   <a href="https://www.youtube.com/watch?v=nKoUh7VP-eE" target="_blank">
-    <img src="https://github.com/user-attachments/assets/d5c9e87d-83e1-4e99-8491-d44ea61fbecc" height="400">
+    <img height="400" alt="Journiv_Web_And_Mobile_Screen" src="https://github.com/user-attachments/assets/7b5d5adf-d004-4031-bc5f-114efbae5b7a" />
+    <!-- <img src="https://github.com/user-attachments/assets/d5c9e87d-83e1-4e99-8491-d44ea61fbecc" height="400"> -->
   </a>
   <!-- &nbsp;&nbsp;&nbsp;
   <a href="https://www.youtube.com/shorts/-cRwaPKltvQ" target="_blank">
